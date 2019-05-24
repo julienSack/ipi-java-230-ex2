@@ -7,7 +7,6 @@ import com.ipiecoles.java.java230.model.Manager;
 import com.ipiecoles.java.java230.model.Technicien;
 import com.ipiecoles.java.java230.repository.EmployeRepository;
 import com.ipiecoles.java.java230.repository.ManagerRepository;
-import jdk.nashorn.internal.runtime.regexp.joni.Regex;
 import org.joda.time.format.DateTimeFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,6 +79,7 @@ public class MyRunner implements CommandLineRunner {
             }
 
         }
+        employeRepository.save(employes);
         return employes;
     }
 
@@ -109,37 +109,6 @@ public class MyRunner implements CommandLineRunner {
     }
 
     /**
-     * Méthode qui crée un Commercial à partir d'une ligne contenant les informations d'un commercial et l'ajoute dans la liste globale des employés
-     *
-     * @param ligneCommercial la ligne contenant les infos du commercial à intégrer
-     * @throws BatchException s'il y a un problème sur cette ligne
-     */
-    private void processCommercial(String ligneCommercial) throws BatchException {
-        String[] commercialFields = ligneCommercial.split(",");
-
-//controle le matricule, le nombre de champs de la ligne, la date, et le salaire
-        checkChampsCommun(commercialFields, REGEX_MATRICULE, NB_CHAMPS_COMMERCIAL, "commercial");
-
-// controle le chiffre d'affaire
-        try {
-            Double.parseDouble(commercialFields[5]);
-        } catch (Exception e) {
-            throw new BatchException(commercialFields[4] + " n'est pas un nombre valide pour un Chiffre d'affaire");
-        }
-
-//controle le coefficient du commercial
-        try {
-            Double.parseDouble(commercialFields[4]);
-        } catch (Exception e) {
-            throw new BatchException("La performance du commercial est incorrecte : " + commercialFields[4]);
-        }
-
-        Commercial c = new Commercial();
-        setEmployes(c, commercialFields);
-        employes.add(c);
-    }
-
-    /**
      * Méthode qui crée un Manager à partir d'une ligne contenant les informations d'un manager et l'ajoute dans la liste globale des employés
      *
      * @param ligneManager la ligne contenant les infos du manager à intégrer
@@ -148,14 +117,48 @@ public class MyRunner implements CommandLineRunner {
     private void processManager(String ligneManager) throws BatchException {
         //TODO
         String[] managerFields = ligneManager.split(",");
+        Manager m = new Manager();
 
 //controle le matricule, le nombre de champs de la ligne, la date, et le salaire
         checkChampsCommun(managerFields, REGEX_MATRICULE_MANAGER, NB_CHAMPS_MANAGER, "manager");
-
-        Manager m = new Manager();
+// appel la fonction pour set les attributs communs
         setEmployes(m, managerFields);
+// ajoute a m les differents set
         employes.add(m);
+    }
 
+    /**
+     * Méthode qui crée un Commercial à partir d'une ligne contenant les informations d'un commercial et l'ajoute dans la liste globale des employés
+     *
+     * @param ligneCommercial la ligne contenant les infos du commercial à intégrer
+     * @throws BatchException s'il y a un problème sur cette ligne
+     */
+    private void processCommercial(String ligneCommercial) throws BatchException {
+        String[] commercialFields = ligneCommercial.split(",");
+        Commercial c = new Commercial();
+
+//controle le matricule, le nombre de champs de la ligne, la date, et le salaire
+        checkChampsCommun(commercialFields, REGEX_MATRICULE, NB_CHAMPS_COMMERCIAL, "commercial");
+
+// controle le chiffre d'affaire
+        try {
+            Double.parseDouble(commercialFields[5]);
+        } catch (Exception e) {
+            throw new BatchException(commercialFields[5] + " n'est pas un nombre valide pour un Chiffre d'affaire");
+        }
+
+//controle le coefficient du commercial
+int performance = Integer.parseInt(commercialFields[6]);
+        if (performance < 0 || performance > 100){
+                throw new BatchException("La performance du commercial est incorrecte : " + commercialFields[6]);
+            }
+// appel la fonction pour set les attributs communs
+        setEmployes(c, commercialFields);
+//set les deux particuliers au commercial
+        c.setPerformance(Integer.parseInt(commercialFields[6]));
+        c.setCaAnnuel(Double.parseDouble(commercialFields[5]));
+// ajoute a c les differents set
+        employes.add(c);
     }
 
     /**
@@ -167,37 +170,46 @@ public class MyRunner implements CommandLineRunner {
     private void processTechnicien(String ligneTechnicien) throws BatchException {
         //TODO
         String[] technicienFields = ligneTechnicien.split(",");
+        Technicien t = new Technicien();
 
+// verifie et set le grade du technicien
+        try {
+            if (Integer.parseInt(technicienFields[5]) <= 0 || Integer.parseInt(technicienFields[5]) > 5){
+                throw new BatchException("Le grade doit être compris entre 1 et 5 : " +technicienFields[5]);
+            }else{
+            t.setGrade(Integer.parseInt(technicienFields[5]));
+        }}catch (Exception e) {
+            throw new BatchException("Le grade du technicien est incorrect " + technicienFields[5]);
+        }
 //controle le matricule, le nombre de champs de la ligne, la date, et le salaire
         checkChampsCommun(technicienFields, REGEX_MATRICULE, NB_CHAMPS_TECHNICIEN, "technicien");
 
-        try {
-            Integer.parseInt(technicienFields[5]);
-            if (!technicienFields[5].matches("[1-5]")) {
-                throw new BatchException("le grade doit être compris entre 1 et 5");
+// verifie le matricule du manager du technicien
+        if (!technicienFields[6].matches(REGEX_MATRICULE_MANAGER)) {
+            throw new BatchException("la chaîne : " + technicienFields[6] + " ne respecte pas l'expression régulière : " + REGEX_MATRICULE_MANAGER);
+        }
+
+//set le matricule du manager si il est correct
+        employes.stream().forEach(emp-> {
+            if (emp instanceof Manager && emp.getMatricule() == technicienFields[6]) {
+                t.setManager((Manager) emp);
             }
-        } catch (Exception e) {
-            throw new BatchException("Le grade du technicien est incorrect" + technicienFields[5]);
+        });
+// verifie si le matricule existe en bdd
+        if (employeRepository.findByMatricule(technicienFields[6]) == null &&t.getManager() == null)
+        {
+            throw new BatchException("Le manager de matricule " + technicienFields[6] + " n'a pas été trouvé dans le fichier ou en base de données");
         }
 
-
-        if (!technicienFields[5].matches(REGEX_MATRICULE_MANAGER)) {
-            throw new BatchException("la chaîne : " + technicienFields[5] + " ne respecte pas l'expression régulière : " + REGEX_MATRICULE_MANAGER);
-        }
-        Technicien t = new Technicien();
+// appel la fonction pour set les attributs communs
         setEmployes(t, technicienFields);
+// ajoute a t les differents set
         employes.add(t);
-
     }
 
-    // if(technicienFields[5] == ){
-    //   throw new BatchException("Le manager de matricule " + technicienFields[5] + " n'a pas été trouvé dans le fichier ou en base de données")
-    //}
-
-
-
-// function commune pour verifier le matricule, le nombre de champs de la ligne, la date, et le salaire
-
+/** function commune pour verifier les champs communs des employes
+* @param  le matricule, le nombre de champs de la ligne, la date, et le salaire
+*/
     private void checkChampsCommun(String[] fields, String RegexMatricule, Integer RegExnbChamps, String typeEmploye) throws BatchException{
 
 //controle le matricule
@@ -223,6 +235,9 @@ public class MyRunner implements CommandLineRunner {
         }
     }
 
+/** fonction pour set les attributs communs des differents employés
+  * @param  le type d'employé, et le fields de l'employé
+ */
     private void setEmployes (Employe e, String[] fields){
 
     e.setMatricule(fields[0]);
@@ -230,6 +245,8 @@ public class MyRunner implements CommandLineRunner {
     e.setPrenom(fields[2]);
     e.setDateEmbauche(DateTimeFormat.forPattern("dd/MM/yyyy").parseLocalDate(fields[3]));
     e.setSalaire(Double.parseDouble(fields[4]));
+
     }
 }
+
 
